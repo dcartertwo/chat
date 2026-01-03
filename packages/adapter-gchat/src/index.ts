@@ -270,6 +270,7 @@ export class GoogleChatAdapter implements Adapter<GoogleChatThreadId, unknown> {
     // Note: chat.spaces.create requires domain-wide delegation to work
     const scopes = [
       "https://www.googleapis.com/auth/chat.bot",
+      "https://www.googleapis.com/auth/chat.messages.readonly",
       "https://www.googleapis.com/auth/chat.messages.reactions.create",
       "https://www.googleapis.com/auth/chat.messages.reactions",
       "https://www.googleapis.com/auth/chat.spaces.create",
@@ -316,6 +317,7 @@ export class GoogleChatAdapter implements Adapter<GoogleChatThreadId, unknown> {
           scopes: [
             "https://www.googleapis.com/auth/chat.spaces",
             "https://www.googleapis.com/auth/chat.spaces.create",
+            "https://www.googleapis.com/auth/chat.messages.readonly",
           ],
           subject: this.impersonateUser,
         });
@@ -329,6 +331,7 @@ export class GoogleChatAdapter implements Adapter<GoogleChatThreadId, unknown> {
           scopes: [
             "https://www.googleapis.com/auth/chat.spaces",
             "https://www.googleapis.com/auth/chat.spaces.create",
+            "https://www.googleapis.com/auth/chat.messages.readonly",
           ],
           clientOptions: {
             subject: this.impersonateUser,
@@ -1569,13 +1572,17 @@ export class GoogleChatAdapter implements Adapter<GoogleChatThreadId, unknown> {
   ): Promise<Message<unknown>[]> {
     const { spaceName } = this.decodeThreadId(threadId);
 
+    // Use impersonated client if available (has better permissions for listing messages)
+    const api = this.impersonatedChatApi || this.chatApi;
+
     try {
       this.logger?.debug("GChat API: spaces.messages.list", {
         spaceName,
         pageSize: options.limit || 100,
+        impersonated: !!this.impersonatedChatApi,
       });
 
-      const response = await this.chatApi.spaces.messages.list({
+      const response = await api.spaces.messages.list({
         parent: spaceName,
         pageSize: options.limit || 100,
         pageToken: options.before,

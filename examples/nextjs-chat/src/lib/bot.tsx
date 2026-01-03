@@ -168,9 +168,14 @@ bot.onSubscribedMessage(async (thread, message) => {
 
   // If AI mode is enabled, use the AI agent
   if (threadState?.aiMode) {
-    const messages = await thread.adapter.fetchMessages(thread.id, {
-      limit: 20,
-    });
+    // Try to fetch message history, fall back to current message if not supported
+    let messages: typeof thread.recentMessages;
+    try {
+      messages = await thread.adapter.fetchMessages(thread.id, { limit: 20 });
+    } catch {
+      // Some adapters (Teams) don't support fetching message history
+      messages = thread.recentMessages;
+    }
     const history = messages.reverse().map((msg) => ({
       role: msg.author.isMe ? ("assistant" as const) : ("user" as const),
       content: msg.text,
