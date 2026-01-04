@@ -243,6 +243,9 @@ importers:
 
   packages/integration-tests:
     dependencies:
+      '@chat-adapter/discord':
+        specifier: workspace:*
+        version: link:../adapter-discord
       '@chat-adapter/gchat':
         specifier: workspace:*
         version: link:../adapter-gchat
@@ -258,6 +261,12 @@ importers:
       chat:
         specifier: workspace:*
         version: link:../chat
+      discord-api-types:
+        specifier: ^0.37.119
+        version: 0.37.120
+      tweetnacl:
+        specifier: ^1.0.3
+        version: 1.0.3
     devDependencies:
       '@types/node':
         specifier: ^22.10.2
