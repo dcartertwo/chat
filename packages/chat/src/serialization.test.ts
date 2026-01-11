@@ -1,6 +1,10 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { Chat } from "./chat";
-import { parseMarkdown } from "./markdown";
+import {
+  createMockAdapter,
+  createMockState,
+  createTestMessage,
+} from "./mock-adapter";
 import {
   deserializeMessage,
   type SerializedMessage,
@@ -8,135 +12,6 @@ import {
   serializeMessage,
   ThreadImpl,
 } from "./thread";
-import type {
-  Adapter,
-  FormattedContent,
-  Lock,
-  Message,
-  StateAdapter,
-} from "./types";
-
-// Helper to create test messages
-function createTestMessage(
-  id: string,
-  text: string,
-  options?: Partial<Message>,
-): Message {
-  return {
-    id,
-    threadId: "slack:C123:1234.5678",
-    text,
-    formatted: parseMarkdown(text),
-    raw: { some: "data" },
-    author: {
-      userId: "U123",
-      userName: "testuser",
-      fullName: "Test User",
-      isBot: false,
-      isMe: false,
-    },
-    metadata: {
-      dateSent: new Date("2024-01-15T10:30:00.000Z"),
-      edited: false,
-    },
-    attachments: [],
-    ...options,
-  };
-}
-
-// Mock adapter
-function createMockAdapter(name = "slack"): Adapter {
-  return {
-    name,
-    userName: `${name}-bot`,
-    initialize: vi.fn().mockResolvedValue(undefined),
-    handleWebhook: vi.fn().mockResolvedValue(new Response("ok")),
-    postMessage: vi
-      .fn()
-      .mockResolvedValue({ id: "msg-1", threadId: undefined, raw: {} }),
-    editMessage: vi
-      .fn()
-      .mockResolvedValue({ id: "msg-1", threadId: undefined, raw: {} }),
-    deleteMessage: vi.fn().mockResolvedValue(undefined),
-    addReaction: vi.fn().mockResolvedValue(undefined),
-    removeReaction: vi.fn().mockResolvedValue(undefined),
-    startTyping: vi.fn().mockResolvedValue(undefined),
-    fetchMessages: vi
-      .fn()
-      .mockResolvedValue({ messages: [], nextCursor: undefined }),
-    fetchThread: vi
-      .fn()
-      .mockResolvedValue({ id: "t1", channelId: "c1", metadata: {} }),
-    encodeThreadId: vi.fn(
-      (data: { channel: string; thread: string }) =>
-        `${name}:${data.channel}:${data.thread}`,
-    ),
-    decodeThreadId: vi.fn((id: string) => {
-      const [, channel, thread] = id.split(":");
-      return { channel, thread };
-    }),
-    parseMessage: vi.fn(),
-    renderFormatted: vi.fn((_content: FormattedContent) => "formatted"),
-    openDM: vi
-      .fn()
-      .mockImplementation((userId: string) =>
-        Promise.resolve(`${name}:D${userId}:`),
-      ),
-    isDM: vi
-      .fn()
-      .mockImplementation((threadId: string) => threadId.includes(":D")),
-  };
-}
-
-// Mock state adapter
-function createMockState(): StateAdapter & { cache: Map<string, unknown> } {
-  const subscriptions = new Set<string>();
-  const locks = new Map<string, Lock>();
-  const cache = new Map<string, unknown>();
-
-  return {
-    cache,
-    connect: vi.fn().mockResolvedValue(undefined),
-    disconnect: vi.fn().mockResolvedValue(undefined),
-    subscribe: vi.fn().mockImplementation(async (id: string) => {
-      subscriptions.add(id);
-    }),
-    unsubscribe: vi.fn().mockImplementation(async (id: string) => {
-      subscriptions.delete(id);
-    }),
-    isSubscribed: vi.fn().mockImplementation(async (id: string) => {
-      return subscriptions.has(id);
-    }),
-    listSubscriptions: vi.fn().mockImplementation(async function* () {
-      for (const id of subscriptions) yield id;
-    }),
-    acquireLock: vi
-      .fn()
-      .mockImplementation(async (threadId: string, ttlMs: number) => {
-        if (locks.has(threadId)) return null;
-        const lock: Lock = {
-          threadId,
-          token: "test-token",
-          expiresAt: Date.now() + ttlMs,
-        };
-        locks.set(threadId, lock);
-        return lock;
-      }),
-    releaseLock: vi.fn().mockImplementation(async (lock: Lock) => {
-      locks.delete(lock.threadId);
-    }),
-    extendLock: vi.fn().mockResolvedValue(true),
-    get: vi.fn().mockImplementation(async (key: string) => {
-      return cache.get(key) ?? null;
-    }),
-    set: vi.fn().mockImplementation(async (key: string, value: unknown) => {
-      cache.set(key, value);
-    }),
-    delete: vi.fn().mockImplementation(async (key: string) => {
-      cache.delete(key);
-    }),
-  };
-}
 
 describe("Serialization", () => {
   describe("ThreadImpl.toJSON()", () => {
