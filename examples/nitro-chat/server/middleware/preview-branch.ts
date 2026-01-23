@@ -42,7 +42,10 @@ export default defineHandler(async (event) => {
   }
 
   // Construct target URL
-  const targetUrl = new URL(pathname + (event.url?.search || ""), previewBranchUrl);
+  const targetUrl = new URL(
+    pathname + (event.url?.search || ""),
+    previewBranchUrl,
+  );
 
   console.warn(`[middleware] Proxying ${pathname} to ${targetUrl.hostname}`);
 

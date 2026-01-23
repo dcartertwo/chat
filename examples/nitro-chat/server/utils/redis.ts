@@ -1,5 +1,5 @@
-import { createClient } from "redis";
 import { HTTPError } from "nitro/h3";
+import { createClient } from "redis";
 
 const REDIS_URL = process.env.REDIS_URL || "";
 

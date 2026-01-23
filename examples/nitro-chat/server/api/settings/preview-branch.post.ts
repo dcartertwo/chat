@@ -1,4 +1,4 @@
-import { defineHandler, readBody, HTTPError } from "nitro/h3";
+import { defineHandler, HTTPError, readBody } from "nitro/h3";
 import { requireRedisClient } from "../../utils/redis";
 
 const PREVIEW_BRANCH_KEY = "chat-sdk:cache:preview-branch-url";
