@@ -21,10 +21,16 @@
     "@chat-adapter/teams": "workspace:*",
     "ai": "^6.0.5",
     "chat": "workspace:*",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "react-router-dom": "^7.6.1",
     "redis": "^4.7.1"
   },
   "devDependencies": {
     "@types/node": "^22.19.7",
+    "@types/react": "^19.2.8",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^5.1.2",
     "dotenv": "^17.2.3",
     "knip": "^5.78.0",
     "nitro": "3.0.1-alpha.2",
