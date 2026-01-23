@@ -5,14 +5,19 @@
   "rules": {
     "duplicates": "off"
   },
-  "nitro": {
-    "entry": [
-      "server.{js,mjs,ts}",
-      "server/api/**/*.ts",
-      "server/routes/**/*.ts",
-      "server/middleware/**/*.ts",
-      "server/plugins/**/*.ts",
-      ".nitro/types/*.d.ts"
-    ]
+  "workspaces": {
+    "examples/nitro-chat": {
+      "entry": ["src/entry-client.tsx", "src/entry-server.tsx"],
+      "nitro": {
+        "entry": [
+          "server.{js,mjs,ts}",
+          "server/api/**/*.ts",
+          "server/routes/**/*.ts",
+          "server/middleware/**/*.ts",
+          "server/plugins/**/*.ts",
+          ".nitro/types/*.d.ts"
+        ]
+      }
+    }
   }
 }
