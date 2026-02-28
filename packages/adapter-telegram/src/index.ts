@@ -46,10 +46,10 @@ import type {
   TelegramChat,
   TelegramFile,
   TelegramInlineKeyboardMarkup,
+  TelegramLongPollingConfig,
   TelegramMessage,
   TelegramMessageEntity,
   TelegramMessageReactionUpdated,
-  TelegramPollingConfig,
   TelegramRawMessage,
   TelegramReactionType,
   TelegramThreadId,
@@ -84,13 +84,13 @@ interface TelegramMessageAuthor {
   userName: string;
 }
 
-interface ResolvedTelegramPollingConfig {
+interface ResolvedTelegramLongPollingConfig {
   allowedUpdates?: string[];
   deleteWebhook: boolean;
   dropPendingUpdates: boolean;
   limit: number;
   retryDelayMs: number;
-  timeoutSeconds: number;
+  timeout: number;
 }
 
 type TelegramRuntimeMode = "webhook" | "polling";
@@ -115,7 +115,8 @@ export class TelegramAdapter
   private _userName: string;
   private readonly hasExplicitUserName: boolean;
   private readonly mode: TelegramAdapterMode;
-  private readonly polling?: boolean | TelegramPollingConfig;
+  private readonly longPolling?: TelegramLongPollingConfig;
+  private _runtimeMode: TelegramRuntimeMode = "webhook";
   private pollingAbortController: AbortController | null = null;
   private pollingTask: Promise<void> | null = null;
   private pollingActive = false;
@@ -132,6 +133,10 @@ export class TelegramAdapter
     return this.pollingActive;
   }
 
+  get runtimeMode(): TelegramRuntimeMode {
+    return this._runtimeMode;
+  }
+
   constructor(
     config: TelegramAdapterConfig & { logger: Logger; userName?: string }
   ) {
@@ -145,7 +150,7 @@ export class TelegramAdapter
     this._userName = this.normalizeUserName(config.userName ?? "bot");
     this.hasExplicitUserName = Boolean(config.userName);
     this.mode = config.mode ?? "auto";
-    this.polling = config.polling;
+    this.longPolling = config.longPolling;
   }
 
   async initialize(chat: ChatInstance): Promise<void> {
@@ -178,15 +183,17 @@ export class TelegramAdapter
     }
 
     const runtimeMode = await this.resolveRuntimeMode();
+    this._runtimeMode = runtimeMode;
+
     if (runtimeMode === "polling") {
-      const pollingConfig =
-        typeof this.polling === "object" ? this.polling : undefined;
+      const pollingConfig = this.longPolling;
 
       if (this.mode === "auto") {
-        await this.startPolling({
-          ...pollingConfig,
-          deleteWebhook: false,
-        });
+        await this.startPolling(
+          pollingConfig
+            ? { ...pollingConfig, deleteWebhook: false }
+            : { deleteWebhook: false }
+        );
       } else {
         await this.startPolling(pollingConfig);
       }
@@ -226,7 +233,7 @@ export class TelegramAdapter
     return new Response("OK", { status: 200 });
   }
 
-  async startPolling(config?: TelegramPollingConfig): Promise<void> {
+  async startPolling(config?: TelegramLongPollingConfig): Promise<void> {
     if (!this.chat) {
       throw new ValidationError(
         "telegram",
@@ -240,20 +247,24 @@ export class TelegramAdapter
     }
 
     const resolvedConfig = this.resolvePollingConfig(config);
+    const previousRuntimeMode = this._runtimeMode;
     this.pollingActive = true;
 
     try {
       if (resolvedConfig.deleteWebhook) {
         await this.resetWebhook(resolvedConfig.dropPendingUpdates);
       }
+
+      this._runtimeMode = "polling";
     } catch (error) {
       this.pollingActive = false;
+      this._runtimeMode = previousRuntimeMode;
       throw error;
     }
 
     this.logger.info("Telegram polling started", {
       limit: resolvedConfig.limit,
-      timeoutSeconds: resolvedConfig.timeoutSeconds,
+      timeout: resolvedConfig.timeout,
       allowedUpdates: resolvedConfig.allowedUpdates,
     });
 
@@ -299,7 +310,14 @@ export class TelegramAdapter
     }
 
     const webhookInfo = await this.fetchWebhookInfo();
-    if (typeof webhookInfo?.url === "string" && webhookInfo.url.trim()) {
+    if (!webhookInfo) {
+      this.logger.warn(
+        "Telegram auto mode could not verify webhook status; keeping webhook mode"
+      );
+      return "webhook";
+    }
+
+    if (typeof webhookInfo.url === "string" && webhookInfo.url.trim()) {
       this.logger.debug("Telegram auto mode selected webhook mode", {
         webhookUrl: webhookInfo.url,
       });
@@ -343,7 +361,10 @@ export class TelegramAdapter
     );
   }
 
-  private processUpdate(update: TelegramUpdate, options?: WebhookOptions): void {
+  private processUpdate(
+    update: TelegramUpdate,
+    options?: WebhookOptions
+  ): void {
     const messageUpdate =
       update.message ??
       update.edited_message ??
@@ -1410,7 +1431,7 @@ export class TelegramAdapter
   }
 
   private async pollingLoop(
-    config: ResolvedTelegramPollingConfig
+    config: ResolvedTelegramLongPollingConfig
   ): Promise<void> {
     let offset: number | undefined;
 
@@ -1424,7 +1445,7 @@ export class TelegramAdapter
             allowed_updates: config.allowedUpdates,
             limit: config.limit,
             offset,
-            timeout: config.timeoutSeconds,
+            timeout: config.timeout,
           },
           { signal: this.pollingAbortController.signal }
         );
@@ -1463,15 +1484,13 @@ export class TelegramAdapter
   }
 
   private resolvePollingConfig(
-    override?: TelegramPollingConfig
-  ): ResolvedTelegramPollingConfig {
-    const baseConfig =
-      this.polling && typeof this.polling === "object" ? this.polling : {};
+    override?: TelegramLongPollingConfig
+  ): ResolvedTelegramLongPollingConfig {
+    const baseConfig = this.longPolling ?? {};
     const merged = {
       ...baseConfig,
       ...override,
     };
-    const timeoutSeconds = merged.timeout ?? merged.timeoutSeconds;
 
     return {
       allowedUpdates:
@@ -1492,8 +1511,8 @@ export class TelegramAdapter
         0,
         Number.MAX_SAFE_INTEGER
       ),
-      timeoutSeconds: this.clampInteger(
-        timeoutSeconds,
+      timeout: this.clampInteger(
+        merged.timeout,
         TELEGRAM_DEFAULT_POLLING_TIMEOUT_SECONDS,
         TELEGRAM_MIN_POLLING_TIMEOUT_SECONDS,
         TELEGRAM_MAX_POLLING_TIMEOUT_SECONDS
@@ -1656,7 +1675,7 @@ export function createTelegramAdapter(
     botToken,
     apiBaseUrl,
     mode,
-    polling: config?.polling,
+    longPolling: config?.longPolling,
     secretToken,
     logger: config?.logger ?? new ConsoleLogger("info").child("telegram"),
     userName,
@@ -1669,9 +1688,9 @@ export type {
   TelegramAdapterMode,
   TelegramCallbackQuery,
   TelegramChat,
+  TelegramLongPollingConfig,
   TelegramMessage,
   TelegramMessageReactionUpdated,
-  TelegramPollingConfig,
   TelegramRawMessage,
   TelegramThreadId,
   TelegramUpdate,

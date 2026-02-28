@@ -10,6 +10,8 @@ export interface TelegramAdapterConfig {
   apiBaseUrl?: string;
   /** Telegram bot token from BotFather. */
   botToken: string;
+  /** Optional long-polling configuration for getUpdates flow. */
+  longPolling?: TelegramLongPollingConfig;
   /**
    * Adapter runtime mode:
    * - auto: choose webhook vs polling based on webhook registration/runtime (default)
@@ -17,8 +19,6 @@ export interface TelegramAdapterConfig {
    * - polling: polling-only mode
    */
   mode?: TelegramAdapterMode;
-  /** Optional long-polling mode for getUpdates flow. */
-  polling?: boolean | TelegramPollingConfig;
   /** Optional webhook secret token checked against x-telegram-bot-api-secret-token. */
   secretToken?: string;
 }
@@ -29,7 +29,7 @@ export type TelegramAdapterMode = "auto" | "webhook" | "polling";
  * Telegram long-polling configuration.
  * @see https://core.telegram.org/bots/api#getupdates
  */
-export interface TelegramPollingConfig {
+export interface TelegramLongPollingConfig {
   /** Allowed update types passed to getUpdates. */
   allowedUpdates?: string[];
   /**
@@ -50,8 +50,6 @@ export interface TelegramPollingConfig {
   retryDelayMs?: number;
   /** Long-poll timeout in seconds for getUpdates. @default 30 */
   timeout?: number;
-  /** @deprecated Use timeout instead. */
-  timeoutSeconds?: number;
 }
 
 /**

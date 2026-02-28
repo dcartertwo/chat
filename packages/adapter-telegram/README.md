@@ -32,7 +32,8 @@ Features include mentions, reactions, typing indicators, file uploads, and card 
 ## Polling mode
 
 Use long polling (`getUpdates`) when you cannot expose a public webhook endpoint.
-Polling starts automatically when `polling` is provided. Pass `polling: true` to use defaults.
+Polling starts automatically in `mode: "polling"` or when `mode: "auto"` selects polling.
+Use `longPolling` to customize polling behavior (defaults apply when omitted).
 Use `adapter.resetWebhook(dropPendingUpdates?)` to clear Telegram webhook registration manually.
 
 ```typescript
@@ -41,7 +42,7 @@ import { createMemoryState } from "@chat-adapter/state-memory";
 const telegram = createTelegramAdapter({
   botToken: process.env.TELEGRAM_BOT_TOKEN!,
   mode: "polling",
-  polling: {
+  longPolling: {
     timeout: 30,
     dropPendingUpdates: false,
   },
@@ -65,7 +66,7 @@ await telegram.stopPolling();
 const telegram = createTelegramAdapter({
   botToken: process.env.TELEGRAM_BOT_TOKEN!,
   mode: "auto", // default
-  polling: { timeout: 30 }, // used only when auto mode selects polling
+  longPolling: { timeout: 30 }, // used only when auto mode selects polling
 });
 
 const bot = new Chat({
@@ -76,6 +77,8 @@ const bot = new Chat({
 
 // Required for long-running local processes without incoming webhooks:
 void bot.initialize();
+
+console.log(telegram.runtimeMode); // "webhook" | "polling"
 ```
 
 ## Documentation

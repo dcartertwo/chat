@@ -271,7 +271,9 @@ describe("TelegramAdapter", () => {
       userName: "mybot",
     });
 
-    await expect(adapter.startPolling()).rejects.toBeInstanceOf(ValidationError);
+    await expect(adapter.startPolling()).rejects.toBeInstanceOf(
+      ValidationError
+    );
   });
 
   it("can reset webhook explicitly", async () => {
@@ -361,7 +363,8 @@ describe("TelegramAdapter", () => {
     });
 
     await waitForCondition(
-      () => (chat.processMessage as ReturnType<typeof vi.fn>).mock.calls.length > 0
+      () =>
+        (chat.processMessage as ReturnType<typeof vi.fn>).mock.calls.length > 0
     );
     await waitForCondition(() => mockFetch.mock.calls.length >= 4);
     await adapter.stopPolling();
@@ -430,13 +433,14 @@ describe("TelegramAdapter", () => {
       mode: "polling",
       logger: mockLogger,
       userName: "mybot",
-      polling: {
+      longPolling: {
         limit: 1,
         timeout: 1,
       },
     });
 
     await adapter.initialize(createMockChat());
+    expect(adapter.runtimeMode).toBe("polling");
     await waitForCondition(() => mockFetch.mock.calls.length >= 4);
     await adapter.stopPolling();
 
@@ -497,7 +501,7 @@ describe("TelegramAdapter", () => {
       mode: "auto",
       logger: mockLogger,
       userName: "mybot",
-      polling: {
+      longPolling: {
         limit: 1,
         timeout: 1,
       },
@@ -505,9 +509,11 @@ describe("TelegramAdapter", () => {
     const chat = createMockChat();
 
     await adapter.initialize(chat);
+    expect(adapter.runtimeMode).toBe("polling");
 
     await waitForCondition(
-      () => (chat.processMessage as ReturnType<typeof vi.fn>).mock.calls.length > 0
+      () =>
+        (chat.processMessage as ReturnType<typeof vi.fn>).mock.calls.length > 0
     );
     await waitForCondition(() => mockFetch.mock.calls.length >= 4);
     await adapter.stopPolling();
@@ -518,76 +524,7 @@ describe("TelegramAdapter", () => {
     expect(adapter.isPolling).toBe(false);
   });
 
-  it("auto mode with polling true uses default polling settings", async () => {
-    mockFetch
-      .mockResolvedValueOnce(
-        telegramOk({
-          id: 999,
-          is_bot: true,
-          first_name: "Bot",
-          username: "mybot",
-        })
-      )
-      .mockResolvedValueOnce(
-        telegramOk({
-          allowed_updates: [],
-          has_custom_certificate: false,
-          pending_update_count: 0,
-          url: "",
-        })
-      )
-      .mockResolvedValueOnce(
-        telegramOk([
-          {
-            update_id: 43,
-            message: sampleMessage({
-              message_id: 101,
-              text: "auto polling true message",
-            }),
-          },
-        ])
-      )
-      .mockImplementationOnce((_input, init) => {
-        return new Promise<Response>((_resolve, reject) => {
-          const signal = init?.signal;
-          if (signal?.aborted) {
-            reject(createAbortError());
-            return;
-          }
-          signal?.addEventListener(
-            "abort",
-            () => {
-              reject(createAbortError());
-            },
-            { once: true }
-          );
-        });
-      });
-
-    const adapter = createTelegramAdapter({
-      botToken: "token",
-      mode: "auto",
-      logger: mockLogger,
-      userName: "mybot",
-      polling: true,
-    });
-    const chat = createMockChat();
-
-    await adapter.initialize(chat);
-
-    await waitForCondition(
-      () => (chat.processMessage as ReturnType<typeof vi.fn>).mock.calls.length > 0
-    );
-    await waitForCondition(() => mockFetch.mock.calls.length >= 4);
-    await adapter.stopPolling();
-
-    expect(String(mockFetch.mock.calls[1]?.[0])).toContain("/getWebhookInfo");
-    expect(String(mockFetch.mock.calls[2]?.[0])).toContain("/getUpdates");
-    expect(String(mockFetch.mock.calls[3]?.[0])).toContain("/getUpdates");
-    expect(adapter.isPolling).toBe(false);
-  });
-
-  it("defaults to auto mode and falls back to polling without polling config", async () => {
+  it("defaults to auto mode and uses default long polling settings", async () => {
     mockFetch
       .mockResolvedValueOnce(
         telegramOk({
@@ -630,11 +567,21 @@ describe("TelegramAdapter", () => {
     });
 
     await adapter.initialize(createMockChat());
+    expect(adapter.runtimeMode).toBe("polling");
     await waitForCondition(() => mockFetch.mock.calls.length >= 4);
     await adapter.stopPolling();
 
+    const firstPollBody = JSON.parse(
+      String((mockFetch.mock.calls[2]?.[1] as RequestInit).body)
+    ) as {
+      limit?: number;
+      timeout?: number;
+    };
+
     expect(String(mockFetch.mock.calls[1]?.[0])).toContain("/getWebhookInfo");
     expect(String(mockFetch.mock.calls[2]?.[0])).toContain("/getUpdates");
+    expect(firstPollBody.limit).toBe(100);
+    expect(firstPollBody.timeout).toBe(30);
     expect(adapter.isPolling).toBe(false);
   });
 
@@ -662,13 +609,13 @@ describe("TelegramAdapter", () => {
       mode: "auto",
       logger: mockLogger,
       userName: "mybot",
-      polling: true,
     });
 
     await adapter.initialize(createMockChat());
 
     expect(mockFetch.mock.calls).toHaveLength(2);
     expect(String(mockFetch.mock.calls[1]?.[0])).toContain("/getWebhookInfo");
+    expect(adapter.runtimeMode).toBe("webhook");
     expect(adapter.isPolling).toBe(false);
   });
 
@@ -700,21 +647,48 @@ describe("TelegramAdapter", () => {
         mode: "auto",
         logger: mockLogger,
         userName: "mybot",
-        polling: true,
       });
 
       await adapter.initialize(createMockChat());
 
       expect(mockFetch.mock.calls).toHaveLength(2);
       expect(String(mockFetch.mock.calls[1]?.[0])).toContain("/getWebhookInfo");
+      expect(adapter.runtimeMode).toBe("webhook");
       expect(adapter.isPolling).toBe(false);
     } finally {
       if (typeof previousVercel === "string") {
         process.env.VERCEL = previousVercel;
       } else {
-        delete process.env.VERCEL;
+        process.env.VERCEL = undefined;
       }
     }
+  });
+
+  it("auto mode stays in webhook mode when getWebhookInfo fails", async () => {
+    mockFetch
+      .mockResolvedValueOnce(
+        telegramOk({
+          id: 999,
+          is_bot: true,
+          first_name: "Bot",
+          username: "mybot",
+        })
+      )
+      .mockResolvedValueOnce(telegramError(500, 500, "Internal Server Error"));
+
+    const adapter = createTelegramAdapter({
+      botToken: "token",
+      mode: "auto",
+      logger: mockLogger,
+      userName: "mybot",
+    });
+
+    await adapter.initialize(createMockChat());
+
+    expect(mockFetch.mock.calls).toHaveLength(2);
+    expect(String(mockFetch.mock.calls[1]?.[0])).toContain("/getWebhookInfo");
+    expect(adapter.runtimeMode).toBe("webhook");
+    expect(adapter.isPolling).toBe(false);
   });
 
   it("does not crash when chat.getUserName() is undefined", async () => {
@@ -750,9 +724,9 @@ describe("TelegramAdapter", () => {
     );
 
     expect(response.status).toBe(200);
-    expect((chat.processMessage as ReturnType<typeof vi.fn>).mock.calls).toHaveLength(
-      1
-    );
+    expect(
+      (chat.processMessage as ReturnType<typeof vi.fn>).mock.calls
+    ).toHaveLength(1);
   });
 
   it("posts, edits, deletes, and sends typing events", async () => {

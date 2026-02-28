@@ -2,4 +2,4 @@
 "@chat-adapter/telegram": patch
 ---
 
-Add Telegram polling modes (`auto`, `webhook`, `polling`) with safe auto fallback behavior, expose `adapter.resetWebhook(...)`, and fix initialization when the chat username is missing.
+Add Telegram adapter runtime modes (`auto`, `webhook`, `polling`) with safer auto fallback behavior, expose `adapter.resetWebhook(...)` and `adapter.runtimeMode`, switch polling config to `longPolling`, and fix initialization when the chat username is missing.
