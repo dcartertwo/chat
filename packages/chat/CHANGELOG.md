@@ -1,5 +1,11 @@
 # chat
 
+## 4.15.1
+
+### Patch Changes
+
+- f5a75c9: Add `fallbackStreamingPlaceholderText` config option to suppress the initial "..." placeholder in post+edit fallback streaming
+
 ## 4.15.0
 
 ### Minor Changes

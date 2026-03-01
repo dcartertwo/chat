@@ -1,5 +1,14 @@
 # @chat-adapter/teams
 
+## 4.15.1
+
+### Patch Changes
+
+- 981650a: Fix ESM directory import for Microsoft Graph auth provider
+- Updated dependencies [f5a75c9]
+  - chat@4.15.1
+  - @chat-adapter/shared@4.15.1
+
 ## 4.15.0
 
 ### Minor Changes

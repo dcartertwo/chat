@@ -1,5 +1,14 @@
 # @chat-adapter/discord
 
+## 4.15.1
+
+### Patch Changes
+
+- 1a37385: Add `Partials.Channel` to gateway client for DM support
+- Updated dependencies [f5a75c9]
+  - chat@4.15.1
+  - @chat-adapter/shared@4.15.1
+
 ## 4.15.0
 
 ### Minor Changes

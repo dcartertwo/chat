@@ -1,5 +1,13 @@
 # @chat-adapter/github
 
+## 4.15.1
+
+### Patch Changes
+
+- Updated dependencies [f5a75c9]
+  - chat@4.15.1
+  - @chat-adapter/shared@4.15.1
+
 ## 4.15.0
 
 ### Minor Changes
