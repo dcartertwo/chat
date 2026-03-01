@@ -4,6 +4,7 @@
     "index",
     "redis",
     "ioredis",
+    "cloudflare-do",
     "memory"
   ]
 }
