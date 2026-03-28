@@ -6,9 +6,29 @@ export interface RedisStateAdapterOptions {
   /** Key prefix for all Redis keys (default: "chat-sdk") */
   keyPrefix?: string;
   /** Logger instance for error reporting */
-  logger: Logger;
+  logger?: Logger;
   /** Redis connection URL (e.g., redis://localhost:6379) */
   url: string;
+}
+
+export interface RedisStateClientOptions {
+  /** Existing redis client instance */
+  client: RedisClientType;
+  /** Key prefix for all Redis keys (default: "chat-sdk") */
+  keyPrefix?: string;
+  /** Logger instance for error reporting */
+  logger?: Logger;
+}
+
+export interface CreateRedisStateOptions {
+  /** Existing redis client instance */
+  client?: RedisClientType;
+  /** Key prefix for all Redis keys (default: "chat-sdk") */
+  keyPrefix?: string;
+  /** Logger instance for error reporting */
+  logger?: Logger;
+  /** Redis connection URL (e.g., redis://localhost:6379) */
+  url?: string;
 }
 
 /**
@@ -21,17 +41,33 @@ export class RedisStateAdapter implements StateAdapter {
   private readonly client: RedisClientType;
   private readonly keyPrefix: string;
   private readonly logger: Logger;
+  private readonly ownsClient: boolean;
   private connected = false;
   private connectPromise: Promise<void> | null = null;
 
-  constructor(options: RedisStateAdapterOptions) {
-    this.client = createClient({ url: options.url });
+  constructor(options: RedisStateAdapterOptions | RedisStateClientOptions) {
+    if ("client" in options) {
+      this.client = options.client;
+      this.ownsClient = false;
+    } else {
+      this.client = createClient({ url: options.url });
+      this.ownsClient = true;
+    }
     this.keyPrefix = options.keyPrefix || "chat-sdk";
-    this.logger = options.logger;
+    this.logger = options.logger ?? new ConsoleLogger("info").child("redis");
 
     // Handle connection errors
     this.client.on("error", (err) => {
       this.logger.error("Redis client error", { error: err });
+    });
+    this.client.on("ready", () => {
+      this.connected = true;
+    });
+    this.client.on("reconnecting", () => {
+      this.connected = false;
+    });
+    this.client.on("end", () => {
+      this.connected = false;
     });
   }
 
@@ -43,16 +79,72 @@ export class RedisStateAdapter implements StateAdapter {
     return `${this.keyPrefix}:subscriptions`;
   }
 
+  private async waitForReady(): Promise<void> {
+    if (this.client.isReady) {
+      return;
+    }
+
+    await new Promise<void>((resolve, reject) => {
+      let lastError: unknown;
+
+      const handleReady = () => {
+        cleanup();
+        resolve();
+      };
+
+      const handleError = (error: unknown) => {
+        lastError = error;
+      };
+
+      const handleEnd = () => {
+        cleanup();
+        reject(
+          lastError ??
+            new Error("Redis client connection ended before becoming ready.")
+        );
+      };
+
+      const cleanup = () => {
+        this.client.off("ready", handleReady);
+        this.client.off("error", handleError);
+        this.client.off("end", handleEnd);
+      };
+
+      this.client.on("ready", handleReady);
+      this.client.on("error", handleError);
+      this.client.on("end", handleEnd);
+
+      if (this.client.isReady) {
+        cleanup();
+        resolve();
+      }
+    });
+  }
+
   async connect(): Promise<void> {
-    if (this.connected) {
+    if (this.connected && this.client.isReady) {
       return;
     }
 
     // Reuse existing connection attempt to avoid race conditions
     if (!this.connectPromise) {
-      this.connectPromise = this.client.connect().then(() => {
+      const connectPromise = (async () => {
+        if (this.ownsClient && !(this.client.isReady || this.client.isOpen)) {
+          await this.client.connect();
+        }
+
+        await this.waitForReady();
         this.connected = true;
-      });
+      })()
+        .catch((error) => {
+          throw error;
+        })
+        .finally(() => {
+          if (this.connectPromise === connectPromise) {
+            this.connectPromise = null;
+          }
+        });
+      this.connectPromise = connectPromise;
     }
 
     await this.connectPromise;
@@ -60,7 +152,9 @@ export class RedisStateAdapter implements StateAdapter {
 
   async disconnect(): Promise<void> {
     if (this.connected) {
-      await this.client.close();
+      if (this.ownsClient) {
+        await this.client.close();
+      }
       this.connected = false;
       this.connectPromise = null;
     }
@@ -321,18 +415,26 @@ function generateToken(): string {
 }
 
 export function createRedisState(
-  options?: Partial<RedisStateAdapterOptions>
+  options: CreateRedisStateOptions = {}
 ): RedisStateAdapter {
-  const url = options?.url ?? process.env.REDIS_URL;
+  if (options.client) {
+    return new RedisStateAdapter({
+      client: options.client,
+      keyPrefix: options.keyPrefix,
+      logger: options.logger,
+    });
+  }
+
+  const url = options.url ?? process.env.REDIS_URL;
   if (!url) {
     throw new Error(
-      "Redis url is required. Set REDIS_URL or provide it in options."
+      "Redis url is required. Set REDIS_URL or provide url in options."
     );
   }
   const resolved: RedisStateAdapterOptions = {
     url,
-    keyPrefix: options?.keyPrefix,
-    logger: options?.logger ?? new ConsoleLogger("info").child("redis"),
+    keyPrefix: options.keyPrefix,
+    logger: options.logger,
   };
   return new RedisStateAdapter(resolved);
 }
